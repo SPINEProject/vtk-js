@@ -39,6 +39,31 @@ function checkRenderTargetSupport(gl, format, type) {
 }
 
 // ----------------------------------------------------------------------------
+// Monitor the usage of GL context across vtkOpenGLRenderWindow instances
+// ----------------------------------------------------------------------------
+
+let GL_CONTEXT_COUNT = 0;
+const GL_CONTEXT_LISTENERS = [];
+
+function createGLContext() {
+  GL_CONTEXT_COUNT++;
+  GL_CONTEXT_LISTENERS.forEach((cb) => cb(GL_CONTEXT_COUNT));
+}
+
+function deleteGLContext() {
+  GL_CONTEXT_COUNT--;
+  GL_CONTEXT_LISTENERS.forEach((cb) => cb(GL_CONTEXT_COUNT));
+}
+
+export function pushMonitorGLContextCount(cb) {
+  GL_CONTEXT_LISTENERS.push(cb);
+}
+
+export function popMonitorGLContextCount(cb) {
+  return GL_CONTEXT_LISTENERS.pop();
+}
+
+// ----------------------------------------------------------------------------
 // vtkOpenGLRenderWindow methods
 // ----------------------------------------------------------------------------
 
@@ -67,6 +92,9 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
     if (model.el) {
       model.el.style.cursor = model.cursorVisibility ? model.cursor : 'none';
     }
+
+    // Invalidate cached DOM container size
+    model.containerSize = null;
   }
   publicAPI.onModified(updateWindow);
 
@@ -143,6 +171,16 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
       // Trigger modified()
       publicAPI.modified();
     }
+  };
+
+  publicAPI.getContainer = () => model.el;
+
+  publicAPI.getContainerSize = () => {
+    if (!model.containerSize && model.el) {
+      const { width, height } = model.el.getBoundingClientRect();
+      model.containerSize = [width, height];
+    }
+    return model.containerSize || model.size;
   };
 
   publicAPI.getFramebufferSize = () => {
@@ -267,7 +305,7 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
     const webgl2Supported = typeof WebGL2RenderingContext !== 'undefined';
     model.webgl2 = false;
     if (model.defaultToWebgl2 && webgl2Supported) {
-      result = model.canvas.getContext('webgl2'); // , options);
+      result = model.canvas.getContext('webgl2', options);
       if (result) {
         model.webgl2 = true;
         vtkDebugMacro('using webgl2');
@@ -1070,7 +1108,11 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
     return true;
   };
 
-  publicAPI.delete = macro.chain(publicAPI.delete, publicAPI.setViewStream);
+  publicAPI.delete = macro.chain(
+    publicAPI.delete,
+    publicAPI.setViewStream,
+    deleteGLContext
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -1089,6 +1131,7 @@ const DEFAULT_VALUES = {
   cursor: 'pointer',
   textureUnitManager: null,
   textureResourceIds: null,
+  containerSize: null,
   renderPasses: [],
   notifyStartCaptureImage: false,
   webgl2: false,
@@ -1111,6 +1154,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   // Create internal instances
   model.canvas = document.createElement('canvas');
   model.canvas.style.width = '100%';
+  createGLContext();
 
   // Create internal bgImage
   model.bgImage = new Image();
@@ -1179,4 +1223,9 @@ export const newInstance = macro.newInstance(extend, 'vtkOpenGLRenderWindow');
 
 // ----------------------------------------------------------------------------
 
-export default { newInstance, extend };
+export default {
+  newInstance,
+  extend,
+  pushMonitorGLContextCount,
+  popMonitorGLContextCount,
+};

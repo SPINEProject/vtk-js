@@ -1,5 +1,5 @@
 import macro from 'vtk.js/Sources/macro';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkAbstractWidgetFactory from 'vtk.js/Sources/Widgets/Core/AbstractWidgetFactory';
 import vtkCircleContextRepresentation from 'vtk.js/Sources/Widgets/Representations/CircleContextRepresentation';
 import vtkPlaneManipulator from 'vtk.js/Sources/Widgets/Manipulators/PlaneManipulator';
@@ -19,6 +19,8 @@ function widgetBehavior(publicAPI, model) {
     }
 
     model.painting = true;
+    const trailCircle = model.widgetState.addTrail();
+    trailCircle.set(model.activeState.get('origin', 'direction', 'scale1'));
     publicAPI.invokeStartInteractionEvent();
     return macro.EVENT_ABORT;
   };
@@ -72,6 +74,24 @@ function widgetBehavior(publicAPI, model) {
       model.activeState = model.widgetState.getHandle();
       model.activeState.activate();
       model.interactor.requestAnimation(publicAPI);
+
+      const canvas = model.openGLRenderWindow.getCanvas();
+      canvas.onmouseenter = () => {
+        if (
+          model.hasFocus &&
+          model.activeState === model.widgetState.getHandle()
+        ) {
+          model.activeState.setVisible(true);
+        }
+      };
+      canvas.onmouseleave = () => {
+        if (
+          model.hasFocus &&
+          model.activeState === model.widgetState.getHandle()
+        ) {
+          model.activeState.setVisible(false);
+        }
+      };
     }
     model.hasFocus = true;
   };
@@ -126,12 +146,20 @@ function vtkPaintWidget(publicAPI, model) {
     })
     .addStateFromMixin({
       labels: ['handle'],
-      mixins: ['origin', 'color', 'scale1', 'direction', 'manipulator'],
+      mixins: [
+        'origin',
+        'color',
+        'scale1',
+        'direction',
+        'manipulator',
+        'visible',
+      ],
       name: 'handle',
       initialValues: {
         scale1: model.radius * 2,
         origin: [0, 0, 0],
         direction: [0, 0, 1],
+        visible: true,
       },
     })
     .addDynamicMixinState({
@@ -156,7 +184,7 @@ function vtkPaintWidget(publicAPI, model) {
   const superSetRadius = publicAPI.setRadius;
   publicAPI.setRadius = (r) => {
     if (superSetRadius(r)) {
-      handle.setScale1(r * 2);
+      handle.setScale1(r);
     }
   };
 }

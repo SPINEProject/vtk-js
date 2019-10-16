@@ -1,7 +1,9 @@
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import macro from 'vtk.js/Sources/macro';
 
 const PLANE_TOLERANCE = 1.0e-6;
+const COINCIDE = 'coincide';
+const DISJOINT = 'disjoint';
 
 // ----------------------------------------------------------------------------
 // Global methods
@@ -67,7 +69,12 @@ function generalizedProjectPoint(x, origin, normal, xproj) {
 }
 
 function intersectWithLine(p1, p2, origin, normal) {
-  const outObj = { intersection: false, t: Number.MAX_VALUE, x: [] };
+  const outObj = {
+    intersection: false,
+    betweenPoints: false,
+    t: Number.MAX_VALUE,
+    x: [],
+  };
 
   const p21 = [];
   const p1Origin = [];
@@ -100,14 +107,89 @@ function intersectWithLine(p1, p2, origin, normal) {
     return outObj;
   }
 
-  // Valid intersection
+  // Where on the line between p1 and p2 is the intersection
+  // If between 0 and 1, it is between the two points. If < 0 it's before p1, if > 1 it's after p2
   outObj.t = num / den;
 
   outObj.x[0] = p1[0] + outObj.t * p21[0];
   outObj.x[1] = p1[1] + outObj.t * p21[1];
   outObj.x[2] = p1[2] + outObj.t * p21[2];
 
-  outObj.intersection = outObj.t >= 0.0 && outObj.t <= 1.0;
+  outObj.intersection = true;
+  outObj.betweenPoints = outObj.t >= 0.0 && outObj.t <= 1.0;
+  return outObj;
+}
+
+function intersectWithPlane(
+  plane1Origin,
+  plane1Normal,
+  plane2Origin,
+  plane2Normal
+) {
+  const outObj = {
+    intersection: false,
+    l0: [],
+    l1: [],
+    error: null,
+  };
+
+  const cross = [];
+  vtkMath.cross(plane1Normal, plane2Normal, cross);
+  const absCross = cross.map((n) => Math.abs(n));
+
+  // test if the two planes are parallel
+  if (absCross[0] + absCross[1] + absCross[2] < PLANE_TOLERANCE) {
+    // test if disjoint or coincide
+    const v = [];
+    vtkMath.subtract(plane1Origin, plane2Origin, v);
+    if (vtkMath.dot(plane1Normal, v) === 0) {
+      outObj.error = COINCIDE;
+    } else {
+      outObj.error = DISJOINT;
+    }
+    return outObj;
+  }
+
+  // Plane1 and Plane2 intersect in a line
+  // first determine max abs coordinate of the cross product
+  let maxc;
+  if (absCross[0] > absCross[1] && absCross[0] > absCross[2]) {
+    maxc = 'x';
+  } else if (absCross[1] > absCross[2]) {
+    maxc = 'y';
+  } else {
+    maxc = 'z';
+  }
+
+  // To get a point on the intersect line, zero the max coord, and solve for the other two
+  const iP = []; // intersectionPoint
+  // the constants in the 2 plane equations
+  const d1 = -vtkMath.dot(plane1Normal, plane1Origin);
+  const d2 = -vtkMath.dot(plane2Normal, plane2Origin);
+
+  // eslint-disable-next-line default-case
+  switch (maxc) {
+    case 'x': // intersect with x=0
+      iP[0] = 0;
+      iP[1] = (d2 * plane1Normal[2] - d1 * plane2Normal[2]) / cross[0];
+      iP[2] = (d1 * plane2Normal[1] - d2 * plane1Normal[1]) / cross[0];
+      break;
+    case 'y': // intersect with y=0
+      iP[0] = (d1 * plane2Normal[2] - d2 * plane1Normal[2]) / cross[1];
+      iP[1] = 0;
+      iP[2] = (d2 * plane1Normal[0] - d1 * plane2Normal[0]) / cross[1];
+      break;
+    case 'z': // intersect with z=0
+      iP[0] = (d2 * plane1Normal[1] - d1 * plane2Normal[1]) / cross[2];
+      iP[1] = (d1 * plane2Normal[0] - d2 * plane1Normal[0]) / cross[2];
+      iP[2] = 0;
+      break;
+  }
+
+  outObj.l0 = iP;
+  vtkMath.add(iP, cross, outObj.l1);
+  outObj.intersection = true;
+
   return outObj;
 }
 
@@ -122,6 +204,9 @@ export const STATIC = {
   projectVector,
   generalizedProjectPoint,
   intersectWithLine,
+  intersectWithPlane,
+  DISJOINT,
+  COINCIDE,
 };
 
 // ----------------------------------------------------------------------------
@@ -178,6 +263,9 @@ export function vtkPlane(publicAPI, model) {
 
   publicAPI.intersectWithLine = (p1, p2) =>
     intersectWithLine(p1, p2, model.origin, model.normal);
+
+  publicAPI.intersectWithPlane = (planeOrigin, planeNormal) =>
+    intersectWithPlane(planeOrigin, planeNormal, model.origin, model.normal);
 }
 
 // ----------------------------------------------------------------------------

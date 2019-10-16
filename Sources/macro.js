@@ -742,7 +742,8 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
   };
 
   publicAPI.getNumberOfInputPorts = () => model.numberOfInputs;
-  publicAPI.getNumberOfOutputPorts = () => numberOfOutputs;
+  publicAPI.getNumberOfOutputPorts = () =>
+    numberOfOutputs || model.output.length;
 
   publicAPI.getInputArrayToProcess = (inputPort) => {
     const arrayDesc = model.inputArrayToProcess[inputPort];
@@ -881,7 +882,7 @@ export function newInstance(extend, className) {
 // ----------------------------------------------------------------------------
 
 export function chain(...fn) {
-  return (...args) => fn.filter((i) => !!i).forEach((i) => i(...args));
+  return (...args) => fn.filter((i) => !!i).map((i) => i(...args));
 }
 
 // ----------------------------------------------------------------------------

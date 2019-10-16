@@ -4,6 +4,7 @@ import WebworkerPromise from 'webworker-promise';
 import macro from 'vtk.js/Sources/macro';
 import vtkImageData from 'vtk.js/Sources/Common/DataModel/ImageData';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
+import vtkPolygon from 'vtk.js/Sources/Common/DataModel/Polygon';
 
 import PaintFilterWorker from 'vtk.js/Sources/Filters/General/PaintFilter/PaintFilter.worker';
 
@@ -33,8 +34,11 @@ function vtkPaintFilter(publicAPI, model) {
 
   publicAPI.startStroke = () => {
     if (model.labelMap) {
-      worker = new PaintFilterWorker();
-      workerPromise = new WebworkerPromise(worker);
+      if (!workerPromise) {
+        worker = new PaintFilterWorker();
+        workerPromise = new WebworkerPromise(worker);
+      }
+
       workerPromise.exec('start', {
         bufferType: 'Uint8Array',
         dimensions: model.labelMap.getDimensions(),
@@ -46,8 +50,12 @@ function vtkPaintFilter(publicAPI, model) {
   // --------------------------------------------------------------------------
 
   publicAPI.endStroke = () => {
+    let endStrokePromise;
+
     if (workerPromise) {
-      workerPromise.exec('end').then((strokeBuffer) => {
+      endStrokePromise = workerPromise.exec('end');
+
+      endStrokePromise.then((strokeBuffer) => {
         const scalars = model.labelMap.getPointData().getScalars();
         const data = scalars.getData();
 
@@ -109,6 +117,8 @@ function vtkPaintFilter(publicAPI, model) {
         publicAPI.modified();
       });
     }
+
+    return endStrokePromise;
   };
 
   // --------------------------------------------------------------------------
@@ -126,6 +136,84 @@ function vtkPaintFilter(publicAPI, model) {
       const radius = spacing.map((s) => model.radius / s);
 
       workerPromise.exec('paint', { point: indexPt, radius });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+
+  publicAPI.paintRectangle = (point1, point2) => {
+    if (workerPromise) {
+      const index1 = [0, 0, 0];
+      const index2 = [0, 0, 0];
+      vec3.transformMat4(index1, point1, model.maskWorldToIndex);
+      vec3.transformMat4(index2, point2, model.maskWorldToIndex);
+      index1[0] = Math.round(index1[0]);
+      index1[1] = Math.round(index1[1]);
+      index1[2] = Math.round(index1[2]);
+      index2[0] = Math.round(index2[0]);
+      index2[1] = Math.round(index2[1]);
+      index2[2] = Math.round(index2[2]);
+      workerPromise.exec('paintRectangle', {
+        point1: index1,
+        point2: index2,
+      });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+
+  publicAPI.paintEllipse = (center, scale3) => {
+    if (workerPromise) {
+      const realCenter = [0, 0, 0];
+      const origin = [0, 0, 0];
+      let realScale3 = [0, 0, 0];
+      vec3.transformMat4(realCenter, center, model.maskWorldToIndex);
+      vec3.transformMat4(origin, origin, model.maskWorldToIndex);
+      vec3.transformMat4(realScale3, scale3, model.maskWorldToIndex);
+      vec3.subtract(realScale3, realScale3, origin);
+      realScale3 = realScale3.map((s) => (s === 0 ? 0.25 : Math.abs(s)));
+      workerPromise.exec('paintEllipse', {
+        center: realCenter,
+        scale3: realScale3,
+      });
+    }
+  };
+
+  // --------------------------------------------------------------------------
+
+  publicAPI.canUndo = () => history.index > -1;
+
+  // --------------------------------------------------------------------------
+
+  publicAPI.paintPolygon = (pointList) => {
+    if (workerPromise && pointList.length > 0) {
+      const polygon = vtkPolygon.newInstance();
+      const poly = [];
+      for (let i = 0; i < pointList.length / 3; i++) {
+        poly.push([
+          pointList[3 * i + 0],
+          pointList[3 * i + 1],
+          pointList[3 * i + 2],
+        ]);
+      }
+      polygon.setPoints(poly);
+
+      if (!polygon.triangulate()) {
+        console.log('triangulation failed!');
+      }
+
+      const points = polygon.getPointArray();
+      const triangleList = new Float32Array(points.length);
+      const numPoints = Math.floor(triangleList.length / 3);
+      for (let i = 0; i < numPoints; i++) {
+        const point = points.slice(3 * i, 3 * i + 3);
+        const voxel = triangleList.subarray(3 * i, 3 * i + 3);
+        vec3.transformMat4(voxel, point, model.maskWorldToIndex);
+      }
+
+      workerPromise.exec('paintTriangles', {
+        triangleList,
+      });
     }
   };
 
@@ -154,6 +242,10 @@ function vtkPaintFilter(publicAPI, model) {
       publicAPI.modified();
     }
   };
+
+  // --------------------------------------------------------------------------
+
+  publicAPI.canRedo = () => history.index < history.labels.length - 1;
 
   // --------------------------------------------------------------------------
 

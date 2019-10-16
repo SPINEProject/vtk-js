@@ -1,6 +1,6 @@
 import Constants from 'vtk.js/Sources/Common/Core/DataArray/Constants';
 import macro from 'vtk.js/Sources/macro';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 
 const { DefaultDataType } = Constants;
 const TUPLE_HOLDER = [];
@@ -71,10 +71,8 @@ function ensureRangeSize(rangeArray, size = 0) {
 }
 
 function getDataType(typedArray) {
-  return Object.prototype.toString
-    .call(typedArray)
-    .split(' ')[1]
-    .slice(0, -1);
+  // Expects toString() to return "[object ...Array]"
+  return Object.prototype.toString.call(typedArray).slice(8, -1);
 }
 
 function getMaxNorm(normArray) {
@@ -161,6 +159,19 @@ function vtkDataArray(publicAPI, model) {
     model.ranges[rangeIdx] = range;
     model.rangeTuple[0] = range.min;
     model.rangeTuple[1] = range.max;
+    return model.rangeTuple;
+  };
+
+  publicAPI.setRange = (rangeValue, componentIndex) => {
+    if (!model.ranges) {
+      model.ranges = ensureRangeSize(model.ranges, model.numberOfComponents);
+    }
+    const range = { min: rangeValue.min, max: rangeValue.max };
+
+    model.ranges[componentIndex] = range;
+    model.rangeTuple[0] = range.min;
+    model.rangeTuple[1] = range.max;
+
     return model.rangeTuple;
   };
 

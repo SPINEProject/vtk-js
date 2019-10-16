@@ -24,7 +24,7 @@ jobs:
     displayName: 'Install Node.js'
 
   - script: |
-      npm install
+      npm ci
       npm run build:release
     displayName: 'Build'
 
@@ -78,6 +78,7 @@ jobs:
     displayName: 'Install Node.js'
 
   - script: |
-      npm install
+      npm i -g npm@6.4.1
+      npm ci
       npm run build:release
     displayName: 'Build'

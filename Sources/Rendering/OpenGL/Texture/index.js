@@ -1,7 +1,7 @@
 import Constants from 'vtk.js/Sources/Rendering/OpenGL/Texture/Constants';
 import macro from 'vtk.js/Sources/macro';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkViewNode from 'vtk.js/Sources/Rendering/SceneGraph/ViewNode';
 
 const { Wrap, Filter } = Constants;
@@ -171,6 +171,13 @@ function vtkOpenGLTexture(publicAPI, model) {
           model.context.TEXTURE_WRAP_T,
           publicAPI.getOpenGLWrapMode(model.wrapT)
         );
+        if (model.openGLRenderWindow.getWebgl2()) {
+          model.context.texParameteri(
+            model.target,
+            model.context.TEXTURE_WRAP_R,
+            publicAPI.getOpenGLWrapMode(model.wrapR)
+          );
+        }
 
         model.context.bindTexture(model.target, null);
       }

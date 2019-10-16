@@ -1,5 +1,5 @@
 import macro from 'vtk.js/Sources/macro';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkMatrixBuilder from 'vtk.js/Sources/Common/Core/MatrixBuilder';
 import vtkInteractorStyleManipulator from 'vtk.js/Sources/Interaction/Style/InteractorStyleManipulator';
 import vtkMouseCameraTrackballRotateManipulator from 'vtk.js/Sources/Interaction/Manipulators/MouseCameraTrackballRotateManipulator';
@@ -93,13 +93,15 @@ function vtkInteractorStyleMPRSlice(publicAPI, model) {
   const superSetInteractor = publicAPI.setInteractor;
   publicAPI.setInteractor = (interactor) => {
     superSetInteractor(interactor);
+
+    if (cameraSub) {
+      cameraSub.unsubscribe();
+      cameraSub = null;
+    }
+
     if (interactor) {
       const renderer = interactor.getCurrentRenderer();
       const camera = renderer.getActiveCamera();
-
-      if (cameraSub) {
-        cameraSub.unsubscribe();
-      }
 
       cameraSub = camera.onModified(() => {
         updateScrollManipulator();
@@ -112,7 +114,7 @@ function vtkInteractorStyleMPRSlice(publicAPI, model) {
     const renderer = model.interactor.getCurrentRenderer();
     const camera = renderer.getActiveCamera();
     const dist = camera.getDistance();
-    camera.setClippingRange(dist, dist + 1);
+    camera.setClippingRange(dist, dist + 0.1);
   });
 
   const superSetVolumeMapper = publicAPI.setVolumeMapper;

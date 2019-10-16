@@ -1,7 +1,7 @@
 import macro from 'vtk.js/Sources/macro';
 import vtkCellArray from 'vtk.js/Sources/Common/Core/CellArray';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkPoints from 'vtk.js/Sources/Common/Core/Points';
 import vtkPolyData from 'vtk.js/Sources/Common/DataModel/PolyData';
 
@@ -605,7 +605,6 @@ function vtkTubeFilter(publicAPI, model) {
     // implement requestData
     // pass through for now
     const output = vtkPolyData.newInstance();
-    output.shallowCopy(inData[0]);
     outData[0] = output;
 
     const input = inData[0];

@@ -4,7 +4,7 @@ import { vec3, mat3, mat4 } from 'gl-matrix';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
 import { VtkDataTypes } from 'vtk.js/Sources/Common/Core/DataArray/Constants';
 import vtkHelper from 'vtk.js/Sources/Rendering/OpenGL/Helper';
-import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkOpenGLFramebuffer from 'vtk.js/Sources/Rendering/OpenGL/Framebuffer';
 import vtkOpenGLTexture from 'vtk.js/Sources/Rendering/OpenGL/Texture';
 import vtkShaderProgram from 'vtk.js/Sources/Rendering/OpenGL/ShaderProgram';
@@ -16,6 +16,7 @@ import {
   Filter,
 } from 'vtk.js/Sources/Rendering/OpenGL/Texture/Constants';
 import { InterpolationType } from 'vtk.js/Sources/Rendering/Core/VolumeProperty/Constants';
+import { BlendMode } from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
 
 import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
 import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeFS.glsl';
@@ -177,6 +178,28 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       ]).result;
     }
 
+    // Set the BlendMode approach
+    FSSource = vtkShaderProgram.substitute(
+      FSSource,
+      '//VTK::BlendMode',
+      `${model.renderable.getBlendMode()}`
+    ).result;
+
+    const averageIPScalarRange = model.renderable.getAverageIPScalarRange();
+
+    // TODO: Adding the .0 at the end feels hacky
+    FSSource = vtkShaderProgram.substitute(
+      FSSource,
+      '//VTK::AverageIPScalarRangeMin',
+      `${averageIPScalarRange[0]}.0`
+    ).result;
+
+    FSSource = vtkShaderProgram.substitute(
+      FSSource,
+      '//VTK::AverageIPScalarRangeMax',
+      `${averageIPScalarRange[1]}.0`
+    ).result;
+
     shaders.Fragment = FSSource;
 
     publicAPI.replaceShaderLight(shaders, ren, actor);
@@ -242,7 +265,10 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
   publicAPI.getNeedToRebuildShaders = (cellBO, ren, actor) => {
     // do we need lighting?
     let lightComplexity = 0;
-    if (actor.getProperty().getShade()) {
+    if (
+      actor.getProperty().getShade() &&
+      model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND
+    ) {
       // consider the lighting complexity to determine which case applies
       // simple headlight, Light Kit, the whole feature set of VTK
       lightComplexity = 0;
@@ -443,9 +469,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     const vsize = vec3.create();
     vec3.set(
       vsize,
-      (ext[1] - ext[0]) * spc[0],
-      (ext[3] - ext[2]) * spc[1],
-      (ext[5] - ext[4]) * spc[2]
+      (ext[1] - ext[0] + 1) * spc[0],
+      (ext[3] - ext[2] + 1) * spc[1],
+      (ext[5] - ext[4] + 1) * spc[2]
     );
     program.setUniform3f('vSpacing', spc[0], spc[1], spc[2]);
 
@@ -794,7 +820,6 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           fbSize[0] !== Math.floor(size[0] * 0.7) ||
           fbSize[1] !== Math.floor(size[1] * 0.7)
         ) {
-          console.log('resizing');
           model.framebuffer.create(
             Math.floor(size[0] * 0.7),
             Math.floor(size[1] * 0.7)
@@ -974,7 +999,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       vtkMath.uninitializeBounds(model.Bounds);
       return;
     }
-    model.bounnds = publicAPI.getInput().getBounds();
+    model.bounds = publicAPI.getInput().getBounds();
   };
 
   publicAPI.updateBufferObjects = (ren, actor) => {
@@ -1054,6 +1079,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         }
       }
 
+      model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.opacityTexture.setMinificationFilter(Filter.LINEAR);
       model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
 
@@ -1107,6 +1133,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         }
       }
 
+      model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.colorTexture.setMinificationFilter(Filter.LINEAR);
       model.colorTexture.setMagnificationFilter(Filter.LINEAR);
 
@@ -1125,6 +1152,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     if (model.scalarTextureString !== toString) {
       // Build the textures
       const dims = image.getDimensions();
+      model.scalarTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.scalarTexture.resetFormatAndType();
       model.scalarTexture.create3DFilterableFromRaw(
         dims[0],
@@ -1220,7 +1248,7 @@ const DEFAULT_VALUES = {
   opacityTexture: null,
   opacityTextureString: null,
   colorTexture: null,
-  colortextureString: null,
+  colorTextureString: null,
   jitterTexture: null,
   tris: null,
   framebuffer: null,
